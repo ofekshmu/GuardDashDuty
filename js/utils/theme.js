@@ -8,11 +8,17 @@ export const THEMES = {
     icon:    'fa-leaf',
     swatches: ['#141f14', '#4CAF50', '#9CCC65'],
   },
-  bw: {
-    id:      'bw',
-    name:    'Black & White',
-    icon:    'fa-circle-half-stroke',
-    swatches: ['#111111', '#e0e0e0', '#666666'],
+  dark: {
+    id:      'dark',
+    name:    'Dark',
+    icon:    'fa-moon',
+    swatches: ['#161b22', '#58a6ff', '#8b949e'],
+  },
+  light: {
+    id:      'light',
+    name:    'Light',
+    icon:    'fa-sun',
+    swatches: ['#ffffff', '#1f6feb', '#424a53'],
   },
 };
 
