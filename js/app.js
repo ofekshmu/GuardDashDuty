@@ -1,6 +1,7 @@
 // app.js — Router and application entry point
 import { seedData } from './data.js';
 import { getCurrentUser, showLoginModal, logout } from './auth.js';
+import { initTheme } from './utils/theme.js';
 import { initMenu, updateMenu } from './components/menu.js';
 import { renderHome }         from './pages/home.js';
 import { renderAbout }        from './pages/about.js';
@@ -50,6 +51,7 @@ async function navigate(page, user) {
 }
 
 function init() {
+  initTheme();
   seedData();
 
   const user = getCurrentUser();

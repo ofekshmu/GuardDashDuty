@@ -1298,3 +1298,168 @@ input[type=color].form-input { padding: 3px 4px; height: 38px; cursor: pointer; 
 
 /* ── Duty type color dot in tables ─────────────────────────── */
 .type-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+
+/* ============================================================
+   BLACK & WHITE THEME
+   ============================================================ */
+[data-theme="bw"] {
+  --bg:           #080808;
+  --surface:      #111111;
+  --surface2:     #1a1a1a;
+  --surface3:     #222222;
+  --border:       #303030;
+  --border-light: #444444;
+  --primary:      #e8e8e8;
+  --primary-dark: #aaaaaa;
+  --primary-hover:#ffffff;
+  --accent:       #cccccc;
+  --text:         #f0f0f0;
+  --text-muted:   #aaaaaa;
+  --text-dim:     #555555;
+  --danger:       #ff5555;
+  --danger-dark:  #cc2222;
+  --warning:      #ffcc44;
+  --warning-dark: #cc9900;
+  --info:         #aaaaaa;
+  --info-dark:    #777777;
+  --success:      #cccccc;
+
+  /* Rank colors — grayscale ramp */
+  --rank-private:      #505050;
+  --rank-corporal:     #707070;
+  --rank-sergeant:     #909090;
+  --rank-staff-sgt:    #a8a8a8;
+  --rank-lieutenant:   #c0c0c0;
+  --rank-captain:      #d8d8d8;
+  --rank-colonel:      #ffffff;
+}
+
+/* Desaturate duty-type color blobs in B&W */
+[data-theme="bw"] .duty-chip,
+[data-theme="bw"] .duty-block,
+[data-theme="bw"] .offer-duty-chip,
+[data-theme="bw"] .type-dot,
+[data-theme="bw"] .duty-type-dot,
+[data-theme="bw"] .feature-icon i,
+[data-theme="bw"] .stat-icon,
+[data-theme="bw"] .rank-color-swatch { filter: grayscale(1) brightness(.9); }
+
+/* Badge overrides */
+[data-theme="bw"] .badge-approved,
+[data-theme="bw"] .badge-completed   { background: rgba(255,255,255,.1); color: #e8e8e8; border-color: #666; }
+[data-theme="bw"] .badge-assigned    { background: rgba(200,200,200,.1); color: #bbb;    border-color: #555; }
+[data-theme="bw"] .badge-open        { background: rgba(200,200,200,.1); color: #bbb;    border-color: #555; }
+[data-theme="bw"] .badge-manager     { background: rgba(255,255,255,.12); color: #fff;   border-color: #666; }
+[data-theme="bw"] .badge-user        { background: rgba(200,200,200,.1); color: #bbb;    border-color: #444; }
+
+/* Rank badge backgrounds */
+[data-theme="bw"] .rank-private,
+[data-theme="bw"] .rank-corporal,
+[data-theme="bw"] .rank-sergeant,
+[data-theme="bw"] .rank-staff-sergeant,
+[data-theme="bw"] .rank-lieutenant,
+[data-theme="bw"] .rank-captain,
+[data-theme="bw"] .rank-colonel { background: rgba(255,255,255,.08) !important; }
+
+/* Activity icons */
+[data-theme="bw"] .activity-icon         { background: rgba(255,255,255,.08); color: #ccc; }
+[data-theme="bw"] .activity-icon.warning { background: rgba(255,204,68,.1);   color: var(--warning); }
+[data-theme="bw"] .activity-icon.danger  { background: rgba(255,85,85,.1);    color: var(--danger); }
+[data-theme="bw"] .activity-icon.info    { background: rgba(200,200,200,.08); color: #aaa; }
+
+/* Restriction & feature icons */
+[data-theme="bw"] .restriction-icon { background: rgba(255,255,255,.08); color: #ccc; }
+
+/* Nav brand */
+[data-theme="bw"] .nav-brand,
+[data-theme="bw"] .mobile-brand { color: #e8e8e8; }
+[data-theme="bw"] .nav-item.active { background: rgba(255,255,255,.1); color: #fff; }
+[data-theme="bw"] .nav-item.active i { color: #fff; }
+
+/* Buttons */
+[data-theme="bw"] .btn-primary         { background: #e8e8e8; color: #111; }
+[data-theme="bw"] .btn-primary:hover:not(:disabled) { background: #fff; box-shadow: 0 4px 12px rgba(255,255,255,.2); }
+[data-theme="bw"] .toggle-switch input:checked + .slider { background: rgba(255,255,255,.2); border-color: #e8e8e8; }
+[data-theme="bw"] .toggle-switch input:checked + .slider::before { background: #e8e8e8; }
+
+/* Calendar today highlight */
+[data-theme="bw"] .cal-day-cell.today .cal-day-num { background: #e8e8e8; color: #111; }
+
+/* Hero gradient */
+[data-theme="bw"] .hero-banner { background: linear-gradient(135deg, #111 0%, #1e1e1e 100%); }
+[data-theme="bw"] .about-hero  { background: linear-gradient(135deg, #111 0%, #1e1e1e 100%); }
+[data-theme="bw"] .about-hero-icon,
+[data-theme="bw"] .login-icon  { background: rgba(255,255,255,.1); color: #e8e8e8; }
+
+/* Login brand */
+[data-theme="bw"] .login-brand h1 span { color: #e8e8e8; }
+[data-theme="bw"] .nav-tag { background: #333; color: #ccc; }
+[data-theme="bw"] .nav-badge { background: #cc3333; }
+
+/* Page loader */
+[data-theme="bw"] .page-loader i { color: #e8e8e8; }
+
+/* ── Settings Panel ─────────────────────────────────────────── */
+.settings-btn {
+  width: 100%;
+  justify-content: flex-start;
+  gap: 10px;
+  color: var(--text-dim);
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  font-size: .9rem;
+}
+.settings-btn:hover { background: var(--surface2); color: var(--text-muted); }
+
+.theme-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.theme-card {
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  cursor: pointer;
+  transition: var(--transition);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  position: relative;
+  background: var(--surface2);
+}
+.theme-card:hover { border-color: var(--border-light); transform: translateY(-2px); }
+.theme-card.selected { border-color: var(--primary); background: rgba(255,255,255,.04); }
+.theme-card .check-mark {
+  position: absolute;
+  top: 8px; right: 8px;
+  width: 20px; height: 20px;
+  background: var(--primary);
+  color: #111;
+  border-radius: 50%;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  font-size: .7rem;
+  font-weight: 700;
+}
+.theme-card.selected .check-mark { display: flex; }
+.theme-swatches {
+  display: flex;
+  gap: 4px;
+  border-radius: 8px;
+  overflow: hidden;
+  width: 72px;
+  height: 40px;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,.4);
+}
+.theme-swatch { flex: 1; }
+.theme-card-name {
+  font-size: .85rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-align: center;
+}
+.theme-card.selected .theme-card-name { color: var(--primary); }
