@@ -1,5 +1,5 @@
 // duty-market.js — Duty trading marketplace
-import { TradeOffers, DutySlots, DutyTypes, Users, getId, addActivity } from '../data.js';
+import { TradeOffers, DutySlots, DutyTypes, Users, Branches, getId, addActivity } from '../data.js';
 import { formatDate, formatRelative, getDutyType, getUser, avatarHtml, rankBadge, statusBadge, coinDisplay, timeToMinutes } from '../utils/helpers.js';
 import { openModal, closeModal, confirmDialog } from '../components/modal.js';
 import { showToast } from '../components/toast.js';
@@ -8,12 +8,38 @@ export function renderMarket(container, user) {
   drawPage(container, user);
 }
 
+/**
+ * Returns the pending_approval offers visible to the given user based on role.
+ *   base_manager   — sees ALL pending_approval trades
+ *   branch_manager — sees pending_approval trades where at least one party is in their branch
+ *   soldier / other — sees none
+ */
+function getPendingForUser(offers, user, allUsers) {
+  const pending = offers.filter(o => o.status === 'pending_approval');
+  if (user.role === 'base_manager') return pending;
+  if (user.role === 'branch_manager') {
+    return pending.filter(o => {
+      const offerer  = allUsers.find(u => u.id === o.offerUserId);
+      const accepter = allUsers.find(u => u.id === o.acceptedByUserId);
+      return offerer?.branchId === user.branchId || accepter?.branchId === user.branchId;
+    });
+  }
+  return [];
+}
+
 function drawPage(container, user) {
-  const isManager = user.role === 'base_manager' || user.role === 'branch_manager';
-  const offers    = TradeOffers.get();
-  const myOffers  = offers.filter(o => o.offerUserId === user.id);
-  const open      = offers.filter(o => o.status === 'open' && o.offerUserId !== user.id);
-  const pending   = isManager ? offers.filter(o => o.status === 'pending_approval') : [];
+  const isBaseManager   = user.role === 'base_manager';
+  const isBranchManager = user.role === 'branch_manager';
+  const canReview       = isBaseManager || isBranchManager;
+
+  const allUsers       = Users.get();
+  const offers         = TradeOffers.get();
+  const myOffers       = offers.filter(o => o.offerUserId === user.id);
+  const open           = offers.filter(o => o.status === 'open' && o.offerUserId !== user.id);
+  const pendingForUser = getPendingForUser(offers, user, allUsers);
+
+  // Always show the Pending Approval tab for reviewers (even at count 0, for visibility)
+  const showPendingTab = canReview;
 
   container.innerHTML = `
     <div class="page-fade">
@@ -32,20 +58,22 @@ function drawPage(container, user) {
         <button class="tab-btn" data-tab="mine">
           My Offers <span style="color:var(--text-dim);font-size:.8rem">(${myOffers.length})</span>
         </button>
-        ${isManager && pending.length ? `<button class="tab-btn" data-tab="pending">
-          Pending Approval <span class="nav-badge" style="display:inline-flex;margin-left:6px">${pending.length}</span>
+        ${showPendingTab ? `<button class="tab-btn" data-tab="pending">
+          Pending Approval ${pendingForUser.length
+            ? `<span class="nav-badge" style="display:inline-flex;margin-left:6px">${pendingForUser.length}</span>`
+            : `<span style="color:var(--text-dim);font-size:.8rem">(0)</span>`}
         </button>` : ''}
       </div>
 
-      <div id="tab-open"    class="tab-pane">${renderOfferGrid(open,     user, 'open')}</div>
-      <div id="tab-mine"    class="tab-pane" style="display:none">${renderOfferGrid(myOffers, user, 'mine')}</div>
-      ${isManager && pending.length ? `<div id="tab-pending" class="tab-pane" style="display:none">${renderOfferGrid(pending, user, 'pending')}</div>` : ''}
+      <div id="tab-open"    class="tab-pane">${renderOfferGrid(open,            user, 'open',    allUsers)}</div>
+      <div id="tab-mine"    class="tab-pane" style="display:none">${renderOfferGrid(myOffers,      user, 'mine',    allUsers)}</div>
+      ${showPendingTab ? `<div id="tab-pending" class="tab-pane" style="display:none">${renderOfferGrid(pendingForUser, user, 'pending', allUsers)}</div>` : ''}
     </div>`;
 
   container.querySelector('#btn-post-trade').addEventListener('click', () => openPostModal(user, container));
 
   container.querySelectorAll('#market-tabs .tab-btn').forEach(b => b.addEventListener('click', () => {
-    container.querySelectorAll('#market-tabs .tab-btn').forEach(x => x.classList.toggle('active', x===b));
+    container.querySelectorAll('#market-tabs .tab-btn').forEach(x => x.classList.toggle('active', x === b));
     container.querySelectorAll('.tab-pane').forEach(p => p.style.display = 'none');
     const pane = container.querySelector(`#tab-${b.dataset.tab}`);
     if (pane) pane.style.display = '';
@@ -54,31 +82,31 @@ function drawPage(container, user) {
   bindOfferActions(container, user);
 }
 
-function renderOfferGrid(offers, user, context) {
+function renderOfferGrid(offers, user, context, allUsers) {
   if (!offers.length) {
     const msgs = {
       open:    'No open trades at the moment. Post one to get started!',
       mine:    'You have not posted any trade offers yet.',
       pending: 'No trades awaiting approval.',
     };
-    return `<div class="empty-state"><i class="fa-solid fa-store"></i><h3>No offers</h3><p>${msgs[context]||''}</p></div>`;
+    return `<div class="empty-state"><i class="fa-solid fa-store"></i><h3>No offers</h3><p>${msgs[context] || ''}</p></div>`;
   }
-  return `<div class="offer-grid">${offers.map(o => renderOfferCard(o, user, context)).join('')}</div>`;
+  return `<div class="offer-grid">${offers.map(o => renderOfferCard(o, user, context, allUsers)).join('')}</div>`;
 }
 
-function renderOfferCard(o, user, context) {
+function renderOfferCard(o, user, context, allUsers) {
   const offerer    = getUser(o.offerUserId);
-  const offeredDts = (o.offeredDutyIds||[]).map(id => {
+  const offeredDts = (o.offeredDutyIds || []).map(id => {
     const s = DutySlots.get().find(x => x.id === id);
     return s ? getDutyType(s.typeId) : null;
   }).filter(Boolean);
 
-  const wantedDts  = (o.requestedDutyIds||[]).map(id => {
+  const wantedDts = (o.requestedDutyIds || []).map(id => {
     const s = DutySlots.get().find(x => x.id === id);
     return s ? getDutyType(s.typeId) : null;
   }).filter(Boolean);
 
-  const compat     = context === 'open' ? checkCompat(o, user) : null;
+  const compat = context === 'open' ? checkCompat(o, user) : null;
 
   let actions = '';
   if (context === 'open') {
@@ -91,7 +119,26 @@ function renderOfferCard(o, user, context) {
       <button class="btn btn-danger  btn-sm" data-mgr-reject="${o.id}"><i class="fa-solid fa-xmark"></i> Reject</button>`;
   }
 
-  const offeredSlots = (o.offeredDutyIds||[]).map(id => DutySlots.get().find(s => s.id === id)).filter(Boolean);
+  const offeredSlots = (o.offeredDutyIds || []).map(id => DutySlots.get().find(s => s.id === id)).filter(Boolean);
+
+  // For pending context: show which branch each party belongs to
+  let partiesLine = '';
+  if (context === 'pending') {
+    const branches     = Branches.get();
+    const users        = allUsers || Users.get();
+    const offererUser  = users.find(u => u.id === o.offerUserId);
+    const accepterUser = o.acceptedByUserId ? users.find(u => u.id === o.acceptedByUserId) : null;
+    const offererBranch  = offererUser?.branchId
+      ? (branches.find(b => b.id === offererUser.branchId)?.name  || offererUser.branchId)
+      : 'Base';
+    const accepterBranch = accepterUser?.branchId
+      ? (branches.find(b => b.id === accepterUser.branchId)?.name || accepterUser.branchId)
+      : (accepterUser ? 'Base' : '—');
+    partiesLine = `<div class="offer-parties-line" style="font-size:.78rem;color:var(--text-dim);margin-top:6px">
+      <i class="fa-solid fa-code-branch" style="margin-right:4px"></i>
+      Parties: <strong>${offererBranch}</strong> <i class="fa-solid fa-right-left" style="margin:0 4px"></i> <strong>${accepterBranch}</strong>
+    </div>`;
+  }
 
   return `<div class="offer-card">
     <div class="offer-card-header">
@@ -99,7 +146,7 @@ function renderOfferCard(o, user, context) {
         ${avatarHtml(offerer, 'avatar-sm')}
         <div class="offer-user-info">
           <div class="offer-user-name">${offerer?.name || '—'}</div>
-          <div class="offer-user-meta">${rankBadge(offerer||{})} · ${coinDisplay(offerer?.coins||0)}</div>
+          <div class="offer-user-meta">${rankBadge(offerer || {})} · ${coinDisplay(offerer?.coins || 0)}</div>
         </div>
       </div>
       ${statusBadge(o.status)}
@@ -117,11 +164,14 @@ function renderOfferCard(o, user, context) {
       <div>
         <div class="offer-section-label"><i class="fa-solid fa-arrow-right-to-bracket"></i> Wants in Return</div>
         <div class="offer-duties">
-          ${o.requestedDutyIds?.length ? wantedDts.map(dt => `<span class="offer-duty-chip" style="background:${dt.color}">${dt.name}</span>`).join('') : '<span style="color:var(--text-dim);font-size:.82rem">Open to any offer</span>'}
+          ${o.requestedDutyIds?.length
+            ? wantedDts.map(dt => `<span class="offer-duty-chip" style="background:${dt.color}">${dt.name}</span>`).join('')
+            : '<span style="color:var(--text-dim);font-size:.82rem">Open to any offer</span>'}
         </div>
       </div>
       ${o.message ? `<div class="offer-message">"${o.message}"</div>` : ''}
-      ${compat ? `<div class="compat-badges">${compat.map(c => `<span class="compat-badge compat-${c.ok?'ok':'fail'}">${c.label}</span>`).join('')}</div>` : ''}
+      ${compat ? `<div class="compat-badges">${compat.map(c => `<span class="compat-badge compat-${c.ok ? 'ok' : 'fail'}">${c.label}</span>`).join('')}</div>` : ''}
+      ${partiesLine}
     </div>
     <div class="offer-card-footer">
       <span style="font-size:.75rem;color:var(--text-dim)">${formatRelative(o.createdAt)}</span>
@@ -136,7 +186,7 @@ function checkCompat(offer, user) {
   const types  = DutyTypes.get();
 
   // Check offered duties: user has required rank
-  (offer.offeredDutyIds||[]).forEach(id => {
+  (offer.offeredDutyIds || []).forEach(id => {
     const s  = slots.find(x => x.id === id);
     const dt = s ? types.find(t => t.id === s.typeId) : null;
     if (dt) {
@@ -146,7 +196,7 @@ function checkCompat(offer, user) {
   });
 
   // Check no exemption conflicts
-  (offer.offeredDutyIds||[]).forEach(id => {
+  (offer.offeredDutyIds || []).forEach(id => {
     const s = slots.find(x => x.id === id);
     if (s && Array.isArray(user.capabilities) && user.capabilities.includes(s.typeId)) {
       checks.push({ label: 'No exemption conflict', ok: false });
@@ -155,15 +205,15 @@ function checkCompat(offer, user) {
 
   // Check schedule conflict
   const userSlots = slots.filter(s => s.assignedUserId === user.id);
-  const hasConflict = (offer.offeredDutyIds||[]).some(id => {
+  const hasConflict = (offer.offeredDutyIds || []).some(id => {
     const offered = slots.find(x => x.id === id);
     if (!offered) return false;
     return userSlots.some(s => {
       if (s.date !== offered.date) return false;
       const aS = timeToMinutes(s.startTime);
-      const aE = s.endTime === '00:00' ? 24*60 : timeToMinutes(s.endTime);
+      const aE = s.endTime === '00:00' ? 24 * 60 : timeToMinutes(s.endTime);
       const bS = timeToMinutes(offered.startTime);
-      const bE = offered.endTime === '00:00' ? 24*60 : timeToMinutes(offered.endTime);
+      const bE = offered.endTime === '00:00' ? 24 * 60 : timeToMinutes(offered.endTime);
       return bS < aE && bE > aS;
     });
   });
@@ -179,7 +229,7 @@ function bindOfferActions(container, user) {
       const offers = TradeOffers.get();
       const i      = offers.findIndex(o => o.id === b.dataset.cancelOffer);
       if (i !== -1) { offers[i].status = 'cancelled'; TradeOffers.set(offers); }
-      showToast('Trade offer cancelled.','info');
+      showToast('Trade offer cancelled.', 'info');
       drawPage(container, user);
     }, 'Cancel Offer', 'btn-danger');
   }));
@@ -202,9 +252,9 @@ function acceptOffer(offerId, user, container) {
 
   // Move to pending approval
   const i = offers.findIndex(o => o.id === offerId);
-  offers[i].status              = 'pending_approval';
-  offers[i].acceptedByUserId    = user.id;
-  offers[i].acceptedAt          = new Date().toISOString();
+  offers[i].status           = 'pending_approval';
+  offers[i].acceptedByUserId = user.id;
+  offers[i].acceptedAt       = new Date().toISOString();
   TradeOffers.set(offers);
 
   addActivity(`${user.name} accepted trade offer from ${getUser(offer.offerUserId)?.name}`, 'fa-handshake', 'info');
@@ -212,12 +262,16 @@ function acceptOffer(offerId, user, container) {
   drawPage(container, user);
 }
 
+/**
+ * Called by both base_manager and branch_manager to approve or reject a pending trade.
+ * The swap logic is identical regardless of which reviewer role triggers it.
+ */
 function managerReview(offerId, decision, user, container) {
   const offers = TradeOffers.get();
   const idx    = offers.findIndex(o => o.id === offerId);
   if (idx === -1) return;
 
-  const offer = offers[idx];
+  const offer        = offers[idx];
   offers[idx].status     = decision === 'approved' ? 'completed' : 'rejected';
   offers[idx].reviewedAt = new Date().toISOString();
   TradeOffers.set(offers);
@@ -228,17 +282,17 @@ function managerReview(offerId, decision, user, container) {
     const offerer = offer.offerUserId;
     const taker   = offer.acceptedByUserId;
 
-    (offer.offeredDutyIds||[]).forEach(id => {
+    (offer.offeredDutyIds || []).forEach(id => {
       const i = slots.findIndex(s => s.id === id);
       if (i !== -1) slots[i].assignedUserId = taker;
     });
-    (offer.requestedDutyIds||[]).forEach(id => {
+    (offer.requestedDutyIds || []).forEach(id => {
       const i = slots.findIndex(s => s.id === id);
       if (i !== -1) slots[i].assignedUserId = offerer;
     });
     DutySlots.set(slots);
 
-    addActivity(`Trade approved: duties swapped between ${getUser(offerer)?.name} and ${getUser(taker)?.name}`, 'fa-rotate', 'success');
+    addActivity(`Trade approved by ${user.name}: duties swapped between ${getUser(offerer)?.name} and ${getUser(taker)?.name}`, 'fa-rotate', 'success');
     showToast('Trade approved! Duties swapped.', 'success');
   } else {
     showToast('Trade rejected.', 'info');
@@ -248,9 +302,10 @@ function managerReview(offerId, decision, user, container) {
 }
 
 function openPostModal(user, container) {
-  const slots = DutySlots.get().filter(s => s.assignedUserId === user.id && s.status === 'assigned');
+  const slots    = DutySlots.get().filter(s => s.assignedUserId === user.id && s.status === 'assigned');
   const allSlots = DutySlots.get();
-  const users = Users.get().filter(u => u.id !== user.id && u.role === 'soldier' && u.status === 'active');
+  // Only soldiers can be trade partners — managers do not participate as traders
+  const users    = Users.get().filter(u => u.id !== user.id && u.role === 'soldier' && u.status === 'active');
 
   if (!slots.length) {
     showToast('You have no assigned duties to offer.', 'warning');
@@ -263,7 +318,7 @@ function openPostModal(user, container) {
       <select class="form-select" id="pt-offered">
         ${slots.map(s => {
           const dt = getDutyType(s.typeId);
-          return `<option value="${s.id}">${dt?.name||'?'} — ${formatDate(s.date)} ${s.startTime}–${s.endTime}</option>`;
+          return `<option value="${s.id}">${dt?.name || '?'} — ${formatDate(s.date)} ${s.startTime}–${s.endTime}</option>`;
         }).join('')}
       </select>
     </div>
@@ -290,12 +345,12 @@ function openPostModal(user, container) {
     </div>
     <div id="pt-err" class="form-error"></div>`,
     [
-      { label: 'Cancel', cls: 'btn-ghost',  action: 'cancel', onClick: closeModal },
-      { label: 'Post Offer', cls: 'btn-primary', action: 'post', onClick: () => postTrade(user, container) },
+      { label: 'Cancel',     cls: 'btn-ghost',   action: 'cancel', onClick: closeModal },
+      { label: 'Post Offer', cls: 'btn-primary',  action: 'post',   onClick: () => postTrade(user, container) },
     ], { size: 'lg' });
 
-  const targetSel = document.getElementById('pt-target-user');
-  const wantedWrap = document.getElementById('pt-wanted-wrap');
+  const targetSel     = document.getElementById('pt-target-user');
+  const wantedWrap    = document.getElementById('pt-wanted-wrap');
   const targetSlotSel = document.getElementById('pt-target-slot-select');
   const selectedDivs  = document.getElementById('pt-selected-duties');
   const selectedIds   = [];
@@ -308,7 +363,7 @@ function openPostModal(user, container) {
       targetSlotSel.innerHTML = `<option value="">— Select a duty to request —</option>` +
         targetSlots.map(s => {
           const dt = getDutyType(s.typeId);
-          return `<option value="${s.id}">${dt?.name||'?'} — ${formatDate(s.date)} ${s.startTime}–${s.endTime}</option>`;
+          return `<option value="${s.id}">${dt?.name || '?'} — ${formatDate(s.date)} ${s.startTime}–${s.endTime}</option>`;
         }).join('');
     } else {
       wantedWrap.style.display = 'none';
@@ -356,17 +411,17 @@ function postTrade(user, container) {
 
   const offers = TradeOffers.get();
   offers.push({
-    id:                 getId(),
-    offerUserId:        user.id,
-    offeredDutyIds:     [offeredId],
+    id:                  getId(),
+    offerUserId:         user.id,
+    offeredDutyIds:      [offeredId],
     requestedFromUserId: targetId,
-    requestedDutyIds:   [...wantedIds],
-    message:            msg,
-    status:             'open',
-    createdAt:          new Date().toISOString(),
-    acceptedByUserId:   null,
-    acceptedAt:         null,
-    reviewedAt:         null,
+    requestedDutyIds:    [...wantedIds],
+    message:             msg,
+    status:              'open',
+    createdAt:           new Date().toISOString(),
+    acceptedByUserId:    null,
+    acceptedAt:          null,
+    reviewedAt:          null,
   });
   TradeOffers.set(offers);
 
