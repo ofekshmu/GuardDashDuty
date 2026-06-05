@@ -1,30 +1,278 @@
 // home.js — Home / Dashboard page
-import { DutySlots, DutyTypes, Requests, TradeOffers, CoinHistory, ActivityFeed } from '../data.js';
+import { DutySlots, DutyTypes, Requests, TradeOffers, CoinHistory, ActivityFeed, Branches, Users } from '../data.js';
 import { formatDate, formatRelative, getDutyType, getUser, avatarHtml, rankBadge, coinDisplay, statusBadge, todayStr } from '../utils/helpers.js';
 import { openModal, closeModal } from '../components/modal.js';
 import { showToast } from '../components/toast.js';
 
 export function renderHome(container, user) {
   const today = todayStr();
-  const slots  = DutySlots.get();
-  const types  = DutyTypes.get();
-  const feed   = ActivityFeed.get().slice(0, 6);
-  const coinH  = CoinHistory.get().filter(c => c.userId === user.id);
 
-  // Stats
-  const now = new Date();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
-  const monthEnd   = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0,10);
+  // Role badge HTML
+  const roleBadgeHtml = {
+    base_manager:   '<span class="badge badge-base-manager">Base Commander</span>',
+    branch_manager: '<span class="badge badge-branch-manager">Branch Commander</span>',
+    soldier:        '',
+  }[user.role] || '';
+
+  // Shared hero banner builder
+  function heroBannerHtml(subtitleExtra = '') {
+    return `
+      <div class="hero-banner">
+        <div>
+          ${avatarHtml(user, 'avatar-lg')}
+        </div>
+        <div class="hero-text">
+          <h1>Welcome back, <span>${user.name.split(' ').pop()}</span></h1>
+          <p>${rankBadge(user)} &nbsp;${roleBadgeHtml}${subtitleExtra} &nbsp;Last login: ${formatRelative(user.lastLogin)}</p>
+        </div>
+      </div>`;
+  }
+
+  // Shared activity feed builder
+  function activityFeedHtml() {
+    const feed = ActivityFeed.get().slice(0, 6);
+    return `
+      <div class="card section">
+        <div class="card-header">
+          <span class="card-title"><i class="fa-solid fa-bolt"></i> Recent Activity</span>
+        </div>
+        ${feed.length ? `
+          <div class="activity-feed">
+            ${feed.map(a => `
+              <div class="activity-item">
+                <div class="activity-icon ${a.type}"><i class="fa-solid ${a.icon}"></i></div>
+                <div class="activity-text">${a.text}</div>
+                <div class="activity-time">${formatRelative(a.ts)}</div>
+              </div>`).join('')}
+          </div>` : `
+          <div class="empty-state">
+            <i class="fa-solid fa-list"></i>
+            <h3>No activity yet</h3>
+          </div>`}
+      </div>`;
+  }
+
+  // ── BASE MANAGER ──────────────────────────────────────────────────────────
+  if (user.role === 'base_manager') {
+    const allSlots    = DutySlots.get();
+    const allRequests = Requests.get();
+    const allUsers    = Users.get();
+    const branches    = Branches.get();
+
+    const totalSlots         = allSlots.length;
+    const vacantSlots        = allSlots.filter(s => s.status === 'vacant').length;
+    const pendingBranchSlots = allSlots.filter(s => s.status === 'pending_branch').length;
+    const pendingRequests    = allRequests.filter(r => r.status === 'pending').length;
+
+    const branchCardsHtml = `
+      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:24px">
+        ${branches.map(branch => {
+          const bm      = allUsers.find(u => u.role === 'branch_manager' && u.branchId === branch.id);
+          const bmSlots = allSlots.filter(s => s.branchManagerId === (bm?.id));
+          return `<div class="card" style="flex:1;min-width:220px">
+            <div class="card-header"><span class="card-title">${branch.name}</span></div>
+            <div class="card-body">
+              <div style="margin-bottom:8px"><strong>Commander:</strong> ${bm?.name || 'Unassigned'}</div>
+              <div style="display:flex;gap:16px;flex-wrap:wrap">
+                <div><div class="stat-value" style="font-size:1.4rem">${bmSlots.filter(s => s.status === 'pending_branch').length}</div><div class="stat-label">Pending</div></div>
+                <div><div class="stat-value" style="font-size:1.4rem">${bmSlots.filter(s => s.status === 'assigned').length}</div><div class="stat-label">Assigned</div></div>
+                <div><div class="stat-value" style="font-size:1.4rem">${bmSlots.filter(s => s.status === 'completed').length}</div><div class="stat-label">Completed</div></div>
+              </div>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>`;
+
+    container.innerHTML = `
+      <div class="page-fade">
+        ${heroBannerHtml()}
+
+        <!-- Stats -->
+        <div class="stats-row">
+          <div class="stat-card">
+            <div class="stat-icon"><i class="fa-solid fa-shield-halved"></i></div>
+            <div class="stat-body">
+              <div class="stat-value">${totalSlots}</div>
+              <div class="stat-label">Total duty slots</div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon warning"><i class="fa-solid fa-circle-exclamation"></i></div>
+            <div class="stat-body">
+              <div class="stat-value">${vacantSlots}</div>
+              <div class="stat-label">Vacant slots</div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon info"><i class="fa-solid fa-share-nodes"></i></div>
+            <div class="stat-body">
+              <div class="stat-value">${pendingBranchSlots}</div>
+              <div class="stat-label">Pending branch assignment</div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon"><i class="fa-solid fa-inbox"></i></div>
+            <div class="stat-body">
+              <div class="stat-value">${pendingRequests}</div>
+              <div class="stat-label">Pending requests</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Branch Overview -->
+        <div class="card section">
+          <div class="card-header">
+            <span class="card-title"><i class="fa-solid fa-sitemap"></i> Branch Overview</span>
+            <a href="#duty-manager" class="btn btn-text btn-sm">View all slots</a>
+          </div>
+          <div class="card-body">
+            ${branchCardsHtml}
+          </div>
+        </div>
+
+        <!-- Activity Feed -->
+        ${activityFeedHtml()}
+
+        <!-- Quick Actions -->
+        <div class="card section">
+          <div class="card-header">
+            <span class="card-title"><i class="fa-solid fa-bolt"></i> Quick Actions</span>
+          </div>
+          <div class="card-body" style="display:flex;gap:12px;flex-wrap:wrap">
+            <a href="#duty-manager" class="btn btn-primary"><i class="fa-solid fa-shield-halved"></i> Base Command</a>
+            <a href="#users" class="btn btn-secondary"><i class="fa-solid fa-users"></i> Personnel</a>
+          </div>
+        </div>
+      </div>`;
+
+    container.querySelectorAll('[data-slot]').forEach(el => {
+      el.addEventListener('click', () => openSlotModal(el.dataset.slot));
+    });
+    return;
+  }
+
+  // ── BRANCH MANAGER ────────────────────────────────────────────────────────
+  if (user.role === 'branch_manager') {
+    const allSlots    = DutySlots.get();
+    const allRequests = Requests.get();
+    const branches    = Branches.get();
+
+    const mySlots         = allSlots.filter(s => s.branchManagerId === user.id);
+    const pendingBranch   = mySlots.filter(s => s.status === 'pending_branch').length;
+    const assignedCount   = mySlots.filter(s => s.status === 'assigned').length;
+    const pendingRequests = allRequests.filter(r => r.status === 'pending').length;
+
+    const branch = branches.find(b => b.id === user.branchId);
+    const branchSubtitle = branch ? ` &nbsp;<span style="opacity:.75;font-size:.9em">${branch.name}</span>` : '';
+
+    // Upcoming duties for branch manager view
+    const upcoming = mySlots
+      .filter(s => s.status === 'assigned' && s.date >= today)
+      .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime))
+      .slice(0, 4);
+
+    container.innerHTML = `
+      <div class="page-fade">
+        ${heroBannerHtml(branchSubtitle)}
+
+        <!-- Stats -->
+        <div class="stats-row">
+          <div class="stat-card">
+            <div class="stat-icon"><i class="fa-solid fa-shield-halved"></i></div>
+            <div class="stat-body">
+              <div class="stat-value">${mySlots.length}</div>
+              <div class="stat-label">My delegated slots</div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon warning"><i class="fa-solid fa-circle-exclamation"></i></div>
+            <div class="stat-body">
+              <div class="stat-value">${pendingBranch}</div>
+              <div class="stat-label">Pending assignment</div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon info"><i class="fa-solid fa-user-check"></i></div>
+            <div class="stat-body">
+              <div class="stat-value">${assignedCount}</div>
+              <div class="stat-label">Assigned</div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon"><i class="fa-solid fa-inbox"></i></div>
+            <div class="stat-body">
+              <div class="stat-value">${pendingRequests}</div>
+              <div class="stat-label">Pending requests</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Grid: Upcoming + Activity -->
+        <div class="grid-2">
+          <!-- Upcoming Duties -->
+          <div class="card section">
+            <div class="card-header">
+              <span class="card-title"><i class="fa-solid fa-clock"></i> Upcoming Duties</span>
+              <a href="#branch-command" class="btn btn-text btn-sm">View all</a>
+            </div>
+            ${upcoming.length ? `
+              <div class="duty-list">
+                ${upcoming.map(s => {
+                  const dt = getDutyType(s.typeId);
+                  if (!dt) return '';
+                  const assignedUser = s.assignedUserId ? getUser(s.assignedUserId) : null;
+                  return `<div class="duty-list-item" data-slot="${s.id}">
+                    <div class="duty-type-dot" style="background:${dt.color}"></div>
+                    <div class="duty-list-info">
+                      <div class="duty-list-name">${dt.name}</div>
+                      <div class="duty-list-meta">${formatDate(s.date)} &nbsp;·&nbsp; ${s.startTime}–${s.endTime}${assignedUser ? ` &nbsp;·&nbsp; ${assignedUser.name}` : ''}</div>
+                    </div>
+                    <div class="duty-list-coin">${coinDisplay(dt.coinValue)}</div>
+                  </div>`;
+                }).join('')}
+              </div>` : `
+              <div class="empty-state">
+                <i class="fa-solid fa-calendar-check"></i>
+                <h3>No upcoming duties</h3>
+                <p>No assigned duties coming up in your branch.</p>
+              </div>`}
+          </div>
+
+          <!-- Activity Feed -->
+          ${activityFeedHtml()}
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="card section">
+          <div class="card-header">
+            <span class="card-title"><i class="fa-solid fa-bolt"></i> Quick Actions</span>
+          </div>
+          <div class="card-body" style="display:flex;gap:12px;flex-wrap:wrap">
+            <a href="#branch-command" class="btn btn-primary"><i class="fa-solid fa-shield-halved"></i> Branch Command</a>
+            <a href="#requests" class="btn btn-secondary"><i class="fa-solid fa-inbox"></i> Requests</a>
+          </div>
+        </div>
+      </div>`;
+
+    container.querySelectorAll('[data-slot]').forEach(el => {
+      el.addEventListener('click', () => openSlotModal(el.dataset.slot));
+    });
+    return;
+  }
+
+  // ── SOLDIER ───────────────────────────────────────────────────────────────
+  const slots = DutySlots.get();
+  const feed  = ActivityFeed.get().slice(0, 6);
+
+  const now        = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+  const monthEnd   = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
 
   const mySlots    = slots.filter(s => s.assignedUserId === user.id);
   const thisMonth  = mySlots.filter(s => s.date >= monthStart && s.date <= monthEnd);
   const completed  = mySlots.filter(s => s.status === 'completed');
-  const pending    = Requests.get().filter(r => r.status === 'pending' && (user.role === 'manager' || r.userId === user.id));
+  const pending    = Requests.get().filter(r => r.status === 'pending' && (user.role !== 'soldier' || r.userId === user.id));
   const openTrades = TradeOffers.get().filter(t => t.status === 'open' && t.offerUserId !== user.id);
-
-  const coinsThisMonth = CoinHistory.get()
-    .filter(c => c.userId === user.id && c.date.slice(0,10) >= monthStart)
-    .reduce((sum, c) => sum + c.amount, 0);
 
   // Upcoming duties
   const upcoming = mySlots
@@ -41,7 +289,7 @@ export function renderHome(container, user) {
         </div>
         <div class="hero-text">
           <h1>Welcome back, <span>${user.name.split(' ').pop()}</span></h1>
-          <p>${rankBadge(user)} &nbsp;${user.role === 'manager' ? '&nbsp;<span class="badge badge-manager">Commander</span>' : ''} &nbsp;Last login: ${formatRelative(user.lastLogin)}</p>
+          <p>${rankBadge(user)} &nbsp;Last login: ${formatRelative(user.lastLogin)}</p>
         </div>
         <div class="hero-actions">
           <a href="#calendar" class="btn btn-primary"><i class="fa-solid fa-calendar-days"></i> Calendar</a>
@@ -70,7 +318,7 @@ export function renderHome(container, user) {
           <div class="stat-icon info"><i class="fa-solid fa-inbox"></i></div>
           <div class="stat-body">
             <div class="stat-value">${pending.length}</div>
-            <div class="stat-label">${user.role === 'manager' ? 'Pending approvals' : 'My requests'}</div>
+            <div class="stat-label">${user.role !== 'soldier' ? 'Pending approvals' : 'My requests'}</div>
           </div>
         </div>
         <div class="stat-card">
@@ -146,7 +394,7 @@ export function renderHome(container, user) {
               <th>Duty</th><th>Date</th><th>Coins Earned</th>
             </tr></thead>
             <tbody>
-              ${CoinHistory.get().filter(c => c.userId === user.id).slice(0,5).map(c => `
+              ${CoinHistory.get().filter(c => c.userId === user.id).slice(0, 5).map(c => `
                 <tr>
                   <td>${c.reason}</td>
                   <td>${formatDate(c.date)}</td>

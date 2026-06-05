@@ -50,22 +50,29 @@ export function rankBadge(user) {
 
 export function roleBadge(user) {
   if (!user) return '';
-  return user.role === 'manager'
-    ? `<span class="badge badge-manager">Manager</span>`
-    : `<span class="badge badge-user">Soldier</span>`;
+  const map = {
+    base_manager:   ['badge-base-manager',   'Base Commander'],
+    branch_manager: ['badge-branch-manager', 'Branch Commander'],
+    soldier:        ['badge-soldier',        'Soldier'],
+    manager:        ['badge-base-manager',   'Manager'],
+    user:           ['badge-soldier',        'Soldier'],
+  };
+  const [cls, label] = map[user.role] || ['badge-soldier', user.role];
+  return `<span class="badge ${cls}">${label}</span>`;
 }
 
 export function statusBadge(status) {
   const map = {
-    vacant:          ['badge-vacant',   'Vacant'],
-    assigned:        ['badge-assigned', 'Assigned'],
-    completed:       ['badge-completed','Completed'],
-    pending_approval:['badge-pending',  'Pending'],
-    pending:         ['badge-pending',  'Pending'],
-    approved:        ['badge-approved', 'Approved'],
-    rejected:        ['badge-rejected', 'Rejected'],
-    open:            ['badge-open',     'Open'],
-    completed_trade: ['badge-completed','Completed'],
+    vacant:          ['badge-vacant',          'Vacant'],
+    pending_branch:  ['badge-pending-branch',  'Awaiting Assignment'],
+    assigned:        ['badge-assigned',        'Assigned'],
+    completed:       ['badge-completed',       'Completed'],
+    pending_approval:['badge-pending',         'Pending Approval'],
+    pending:         ['badge-pending',         'Pending'],
+    approved:        ['badge-approved',        'Approved'],
+    rejected:        ['badge-rejected',        'Rejected'],
+    open:            ['badge-open',            'Open'],
+    completed_trade: ['badge-completed',       'Completed'],
   };
   const [cls, label] = map[status] || ['badge-vacant', status];
   return `<span class="badge ${cls}">${label}</span>`;

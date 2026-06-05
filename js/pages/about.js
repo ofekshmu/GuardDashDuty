@@ -124,12 +124,12 @@ export function renderAbout(container) {
           <table class="table">
             <thead><tr><th>Username</th><th>Password</th><th>Role</th><th>Rank</th></tr></thead>
             <tbody>
-              <tr><td><code>manager</code></td><td><code>manager123</code></td><td><span class="badge badge-manager">Manager</span></td><td>Colonel</td></tr>
-              <tr><td><code>alpha</code></td>  <td><code>user123</code></td>    <td><span class="badge badge-user">Soldier</span></td>  <td>Sergeant</td></tr>
-              <tr><td><code>bravo</code></td>  <td><code>user123</code></td>    <td><span class="badge badge-user">Soldier</span></td>  <td>Corporal</td></tr>
-              <tr><td><code>charlie</code></td><td><code>user123</code></td>    <td><span class="badge badge-user">Soldier</span></td>  <td>Private</td></tr>
-              <tr><td><code>delta</code></td>  <td><code>user123</code></td>    <td><span class="badge badge-user">Soldier</span></td>  <td>Staff Sergeant</td></tr>
-              <tr><td><code>echo</code></td>   <td><code>user123</code></td>    <td><span class="badge badge-user">Soldier</span></td>  <td>Corporal</td></tr>
+              <tr><td><code>commander</code></td><td><code>cmd123</code></td>  <td><span class="badge badge-base-manager">Base Commander</span></td>  <td>Colonel</td></tr>
+              <tr><td><code>deputy</code></td>   <td><code>cmd123</code></td>  <td><span class="badge badge-base-manager">Base Commander</span></td>  <td>Captain</td></tr>
+              <tr><td><code>alpha_co</code></td> <td><code>mgr123</code></td>  <td><span class="badge badge-branch-manager">Branch Commander</span></td><td>Lieutenant</td></tr>
+              <tr><td><code>bravo_co</code></td> <td><code>mgr123</code></td>  <td><span class="badge badge-branch-manager">Branch Commander</span></td><td>Lieutenant</td></tr>
+              <tr><td><code>alpha</code></td>    <td><code>user123</code></td> <td><span class="badge badge-soldier">Soldier</span></td>               <td>Sergeant</td></tr>
+              <tr><td><code>delta</code></td>    <td><code>user123</code></td> <td><span class="badge badge-soldier">Soldier</span></td>               <td>Staff Sgt</td></tr>
             </tbody>
           </table>
         </div>

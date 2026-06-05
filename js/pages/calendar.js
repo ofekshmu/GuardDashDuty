@@ -283,15 +283,24 @@ function openSlotDetail(slotId, user, container) {
   const dt  = getDutyType(slot.typeId);
   const su  = slot.assignedUserId ? getUser(slot.assignedUserId) : null;
 
-  const isUserManager = user.role === 'manager';
+  const isBase   = user.role === 'base_manager';
+  const isBranch = user.role === 'branch_manager';
+  const myBranchSlot = isBranch && slot.branchManagerId === user.id;
 
   const buttons = [];
-  if (isUserManager) {
+  if (isBase) {
     buttons.push({ label: '<i class="fa-solid fa-pencil"></i> Edit',   cls: 'btn-secondary', action: 'edit',   onClick: () => openEditSlotModal(slot, container, user) });
     if (slot.status === 'assigned') {
       buttons.push({ label: '<i class="fa-solid fa-check"></i> Mark Completed', cls: 'btn-primary', action: 'complete', onClick: () => markCompleted(slot, container, user) });
     }
     buttons.push({ label: '<i class="fa-solid fa-trash"></i> Delete',  cls: 'btn-danger',    action: 'delete', onClick: () => deleteSlot(slot, container, user) });
+  } else if (isBranch && myBranchSlot) {
+    if (slot.status === 'pending_branch') {
+      buttons.push({ label: '<i class="fa-solid fa-sitemap"></i> Go to Branch Command', cls: 'btn-secondary', action: 'bc', onClick: () => { closeModal(); window.location.hash = '#branch-command'; } });
+    }
+    if (slot.status === 'assigned') {
+      buttons.push({ label: '<i class="fa-solid fa-check"></i> Mark Completed', cls: 'btn-primary', action: 'complete', onClick: () => markCompleted(slot, container, user) });
+    }
   } else if (slot.assignedUserId === user.id && slot.status === 'assigned') {
     buttons.push({ label: '<i class="fa-solid fa-arrow-right-arrow-left"></i> Request Change', cls: 'btn-secondary', action: 'req', onClick: () => { closeModal(); window.location.hash = '#requests'; } });
   }

@@ -9,7 +9,7 @@ export function renderMarket(container, user) {
 }
 
 function drawPage(container, user) {
-  const isManager = user.role === 'manager';
+  const isManager = user.role === 'base_manager' || user.role === 'branch_manager';
   const offers    = TradeOffers.get();
   const myOffers  = offers.filter(o => o.offerUserId === user.id);
   const open      = offers.filter(o => o.status === 'open' && o.offerUserId !== user.id);
@@ -250,7 +250,7 @@ function managerReview(offerId, decision, user, container) {
 function openPostModal(user, container) {
   const slots = DutySlots.get().filter(s => s.assignedUserId === user.id && s.status === 'assigned');
   const allSlots = DutySlots.get();
-  const users = Users.get().filter(u => u.id !== user.id && u.role !== 'manager' && u.status === 'active');
+  const users = Users.get().filter(u => u.id !== user.id && u.role === 'soldier' && u.status === 'active');
 
   if (!slots.length) {
     showToast('You have no assigned duties to offer.', 'warning');

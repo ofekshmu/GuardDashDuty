@@ -1639,3 +1639,17 @@ input[type=color].form-input { padding: 3px 4px; height: 38px; cursor: pointer; 
   text-align: center;
 }
 .theme-card.selected .theme-card-name { color: var(--primary); }
+
+/* ── Hierarchy role badges ─────────────────────────────────── */
+.badge-base-manager   { background: rgba(198,40,40,.18); color: #ef9a9a; border: 1px solid rgba(198,40,40,.35); }
+.badge-branch-manager { background: rgba(255,152,0,.15);  color: #ffcc80; border: 1px solid rgba(255,152,0,.35); }
+.badge-soldier        { background: rgba(76,175,80,.12);  color: var(--text-muted); border: 1px solid var(--border); }
+
+/* pending_branch slot status */
+.badge-pending-branch { background: rgba(255,193,7,.15); color: #ffd54f; border: 1px solid rgba(255,193,7,.35); }
+
+/* Light-theme overrides for new badges */
+[data-theme="light"] .badge-base-manager   { background: #ffebee; color: #c62828; border-color: #ef9a9a; }
+[data-theme="light"] .badge-branch-manager { background: #fff3e0; color: #e65100; border-color: #ffcc80; }
+[data-theme="light"] .badge-soldier        { background: #f1f8e9; color: #33691e; border-color: #aed581; }
+[data-theme="light"] .badge-pending-branch { background: #fffde7; color: #f57f17; border-color: #ffd54f; }

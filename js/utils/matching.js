@@ -27,7 +27,7 @@ export function runAutoMatch(vacantSlots, users, dutyTypes, restrictions, allSlo
 
     // Step 1: base eligibility
     let eligible = users.filter(u => {
-      if (u.role === 'manager') return false;
+      if (u.role !== 'soldier') return false;
       if (u.status !== 'active') return false;
       if (u.rankLevel < dt.requiredRankLevel) return false;
       if (Array.isArray(u.capabilities) && u.capabilities.includes(slot.typeId)) return false;

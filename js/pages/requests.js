@@ -30,36 +30,79 @@ function checkExpiredExemptions() {
 }
 
 function drawPage(container, user) {
-  const isManager = user.role === 'manager';
-  const allReqs   = Requests.get();
-  const myReqs    = allReqs.filter(r => r.userId === user.id);
-  const pending   = allReqs.filter(r => r.status === 'pending');
+  const isBaseManager   = user.role === 'base_manager';
+  const isBranchManager = user.role === 'branch_manager';
+  const canReview       = isBaseManager || isBranchManager;
+
+  const allReqs = Requests.get();
+  const myReqs  = allReqs.filter(r => r.userId === user.id);
+
+  // Scope requests visible to the reviewer
+  let scopedReqs;
+  if (isBaseManager) {
+    scopedReqs = allReqs;
+  } else if (isBranchManager) {
+    const branchSoldierIds = Users.get()
+      .filter(u => u.branchId === user.branchId && u.role === 'soldier')
+      .map(u => u.id);
+    scopedReqs = allReqs.filter(r => branchSoldierIds.includes(r.userId));
+  } else {
+    scopedReqs = myReqs;
+  }
+
+  const pendingScoped = scopedReqs.filter(r => r.status === 'pending' && r.userId !== user.id);
+
+  // Page subtitle varies by role
+  let subtitle;
+  if (isBaseManager) {
+    subtitle = 'Review all requests across every branch';
+  } else if (isBranchManager) {
+    subtitle = 'Review requests from your branch soldiers';
+  } else {
+    subtitle = 'Submit duty-change and exemption requests';
+  }
+
+  // Build tabs HTML
+  let tabsHtml;
+  if (isBaseManager) {
+    tabsHtml = `
+      <div class="tabs" id="req-tabs">
+        <button class="tab-btn active" data-tab="all">
+          All Requests ${pendingScoped.length ? `<span class="nav-badge" style="display:inline-flex;margin-left:6px">${pendingScoped.length}</span>` : ''}
+        </button>
+        <button class="tab-btn" data-tab="mine">My Requests</button>
+      </div>
+      <div id="req-all-content">${renderRequestList(scopedReqs, user, canReview, true)}</div>
+      <div id="req-mine-content" style="display:none">${renderRequestList(myReqs, user, false, false)}</div>`;
+  } else if (isBranchManager) {
+    tabsHtml = `
+      <div class="tabs" id="req-tabs">
+        <button class="tab-btn active" data-tab="all">
+          Branch Requests ${pendingScoped.length ? `<span class="nav-badge" style="display:inline-flex;margin-left:6px">${pendingScoped.length}</span>` : ''}
+        </button>
+        <button class="tab-btn" data-tab="mine">My Requests</button>
+      </div>
+      <div id="req-all-content">${renderRequestList(scopedReqs, user, canReview, true)}</div>
+      <div id="req-mine-content" style="display:none">${renderRequestList(myReqs, user, false, false)}</div>`;
+  } else {
+    tabsHtml = `<div id="req-mine-content">${renderRequestList(myReqs, user, false, false)}</div>`;
+  }
 
   container.innerHTML = `
     <div class="page-fade">
       <div class="page-header">
         <div>
           <div class="page-title"><i class="fa-solid fa-inbox"></i> Requests</div>
-          <div class="page-subtitle">Submit duty-change and exemption requests</div>
+          <div class="page-subtitle">${subtitle}</div>
         </div>
         <button class="btn btn-primary" id="btn-submit-req"><i class="fa-solid fa-plus"></i> Submit Request</button>
       </div>
-
-      ${isManager ? `
-      <div class="tabs" id="req-tabs">
-        <button class="tab-btn active" data-tab="all">
-          All Requests ${pending.length ? `<span class="nav-badge" style="display:inline-flex;margin-left:6px">${pending.length}</span>` : ''}
-        </button>
-        <button class="tab-btn" data-tab="mine">My Requests</button>
-      </div>
-      <div id="req-all-content">  ${renderRequestList(allReqs, user, true,  container)}</div>
-      <div id="req-mine-content" style="display:none">${renderRequestList(myReqs, user, false, container)}</div>` :
-      `<div id="req-mine-content">${renderRequestList(myReqs, user, false, container)}</div>`}
+      ${tabsHtml}
     </div>`;
 
   container.querySelector('#btn-submit-req').addEventListener('click', () => openSubmitModal(user, container));
 
-  if (isManager) {
+  if (canReview) {
     container.querySelectorAll('#req-tabs .tab-btn').forEach(b => b.addEventListener('click', () => {
       container.querySelectorAll('#req-tabs .tab-btn').forEach(x => x.classList.toggle('active', x === b));
       container.querySelector('#req-all-content').style.display  = b.dataset.tab === 'all'  ? '' : 'none';
@@ -70,22 +113,21 @@ function drawPage(container, user) {
   bindRequestActions(container, user);
 }
 
-function renderRequestList(reqs, user, showUserName, container) {
+function renderRequestList(reqs, user, canReview, showUserName) {
   const sorted = [...reqs].sort((a,b) => b.createdAt.localeCompare(a.createdAt));
   if (!sorted.length) return `
     <div class="empty-state">
       <i class="fa-solid fa-inbox"></i>
       <h3>No requests yet</h3>
-      <p>${user.role === 'manager' ? 'No requests have been submitted.' : 'You have not submitted any requests.'}</p>
+      <p>${canReview ? 'No requests have been submitted.' : 'You have not submitted any requests.'}</p>
     </div>`;
 
-  return `<div style="display:flex;flex-direction:column;gap:12px">${sorted.map(r => renderCard(r, user, showUserName)).join('')}</div>`;
+  return `<div style="display:flex;flex-direction:column;gap:12px">${sorted.map(r => renderCard(r, user, canReview, showUserName)).join('')}</div>`;
 }
 
-function renderCard(r, user, showUserName) {
-  const isManager = user.role === 'manager';
-  const reqUser   = getUser(r.userId);
-  const dt        = r.dutyTypeId ? getDutyType(r.dutyTypeId) : null;
+function renderCard(r, user, canReview, showUserName) {
+  const reqUser = getUser(r.userId);
+  const dt      = r.dutyTypeId ? getDutyType(r.dutyTypeId) : null;
 
   return `<div class="request-card" data-req-id="${r.id}">
     <div class="request-card-header">
@@ -102,7 +144,7 @@ function renderCard(r, user, showUserName) {
       ${r.reviewedAt ? `<span><i class="fa-solid fa-check-circle"></i> Reviewed ${formatRelative(r.reviewedAt)}</span>` : ''}
     </div>
     ${r.reviewNotes ? `<div style="margin-top:8px;padding:8px 10px;background:var(--surface2);border-radius:6px;font-size:.82rem;color:var(--text-muted)"><strong>Review notes:</strong> ${r.reviewNotes}</div>` : ''}
-    ${isManager && r.status === 'pending' ? `
+    ${canReview && r.status === 'pending' ? `
       <div class="request-card-actions">
         <textarea class="review-notes" data-notes-for="${r.id}" placeholder="Optional review notes…" rows="1"></textarea>
         <button class="btn btn-primary btn-sm"  data-approve-req="${r.id}"><i class="fa-solid fa-check"></i> Approve</button>
@@ -153,8 +195,8 @@ function reviewRequest(reqId, decision, notes, user, container) {
 }
 
 function openSubmitModal(user, container) {
-  const types  = DutyTypes.get().filter(t => t.active);
-  const mySlots= DutySlots.get().filter(s => s.assignedUserId === user.id && s.status === 'assigned');
+  const types   = DutyTypes.get().filter(t => t.active);
+  const mySlots = DutySlots.get().filter(s => s.assignedUserId === user.id && s.status === 'assigned');
 
   openModal('Submit Request', `
     <div class="form-group">
@@ -207,13 +249,13 @@ function openSubmitModal(user, container) {
 }
 
 function submitRequest(user, container) {
-  const type      = document.getElementById('rq-type').value;
-  const title     = document.getElementById('rq-title').value.trim();
-  const desc      = document.getElementById('rq-desc').value.trim();
-  const dutySlotId= document.getElementById('rq-duty')?.value || null;
-  const exemptType= document.getElementById('rq-exempttype')?.value || null;
-  const expiry    = document.getElementById('rq-expiry')?.value || null;
-  const err       = document.getElementById('rq-err');
+  const type       = document.getElementById('rq-type').value;
+  const title      = document.getElementById('rq-title').value.trim();
+  const desc       = document.getElementById('rq-desc').value.trim();
+  const dutySlotId = document.getElementById('rq-duty')?.value || null;
+  const exemptType = document.getElementById('rq-exempttype')?.value || null;
+  const expiry     = document.getElementById('rq-expiry')?.value || null;
+  const err        = document.getElementById('rq-err');
 
   if (!title) { err.textContent = 'Title is required.'; return; }
   if (!desc)  { err.textContent = 'Description is required.'; return; }

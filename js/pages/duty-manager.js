@@ -1,5 +1,6 @@
 // duty-manager.js — Manager-only duty administration page
-import { DutySlots, DutyTypes, Restrictions, Users, CoinHistory, ActivityFeed, getId, addActivity, RANKS } from '../data.js';
+import { DutySlots, DutyTypes, Restrictions, Users, CoinHistory, AuditLog, Branches, getId, addActivity, logAudit, RANKS } from '../data.js';
+import { canOverrideBranch } from '../auth.js';
 import { formatDate, getDutyType, getUser, coinDisplay, statusBadge, rankBadge, avatarHtml, todayStr, addDays } from '../utils/helpers.js';
 import { openModal, closeModal, confirmDialog } from '../components/modal.js';
 import { showToast } from '../components/toast.js';
@@ -10,7 +11,7 @@ let _activeTab   = 'types';
 let _matchResults = [];
 
 export function renderDutyManager(container, user) {
-  if (user.role !== 'manager') { window.location.hash = '#home'; return; }
+  if (user.role !== 'base_manager') { window.location.hash = '#home'; return; }
   _matchResults = [];
   drawPage(container, user);
 }
@@ -30,6 +31,7 @@ function drawPage(container, user) {
         <button class="tab-btn ${_activeTab==='slots'?'active':''}"     data-tab="slots">  <i class="fa-solid fa-calendar-plus"></i> Duty Slots</button>
         <button class="tab-btn ${_activeTab==='match'?'active':''}"     data-tab="match">  <i class="fa-solid fa-robot"></i> Auto Match</button>
         <button class="tab-btn ${_activeTab==='restrict'?'active':''}"  data-tab="restrict"><i class="fa-solid fa-ban"></i> Restrictions</button>
+        <button class="tab-btn ${_activeTab==='audit'?'active':''}"     data-tab="audit">  <i class="fa-solid fa-clock-rotate-left"></i> Audit Log</button>
       </div>
 
       <div id="dm-content"></div>
@@ -47,10 +49,11 @@ function drawPage(container, user) {
 }
 
 function drawTab(el, user) {
-  if (_activeTab === 'types')    drawTypes(el, user);
-  else if (_activeTab === 'slots')    drawSlots(el, user);
-  else if (_activeTab === 'match')    drawMatch(el, user);
-  else if (_activeTab === 'restrict') drawRestrictions(el, user);
+  if (_activeTab === 'types')      drawTypes(el, user);
+  else if (_activeTab === 'slots')      drawSlots(el, user);
+  else if (_activeTab === 'match')      drawMatch(el, user);
+  else if (_activeTab === 'restrict')   drawRestrictions(el, user);
+  else if (_activeTab === 'audit')      drawAuditLog(el, user);
 }
 
 // ── Tab: Duty Types ──────────────────────────────────────────
@@ -177,7 +180,7 @@ function drawSlots(el, user) {
     <!-- Slot filters -->
     <div class="filter-bar" style="margin-bottom:12px">
       <span class="filter-label">Status:</span>
-      ${['vacant','assigned','completed'].map(s => `<span class="filter-chip" data-slot-status="${s}">${s}</span>`).join('')}
+      ${['vacant','assigned','completed','pending_branch'].map(s => `<span class="filter-chip" data-slot-status="${s}">${s}</span>`).join('')}
       <span class="filter-label">Type:</span>
       ${types.map(t => `<span class="filter-chip" data-slot-type="${t.id}"><span class="dot" style="background:${t.color}"></span>${t.name}</span>`).join('')}
     </div>
@@ -185,7 +188,7 @@ function drawSlots(el, user) {
     <div class="table-wrap">
       <table class="table" id="slots-table">
         <thead><tr>
-          <th>Date</th><th>Time</th><th>Type</th><th>Assigned To</th><th>Status</th><th>Notes</th><th class="col-actions">Actions</th>
+          <th>Date</th><th>Time</th><th>Type</th><th>Assigned To</th><th>Branch</th><th>Status</th><th>Notes</th><th class="col-actions">Actions</th>
         </tr></thead>
         <tbody id="slots-tbody">
           ${renderSlotsRows(slots, types, users)}
@@ -223,19 +226,40 @@ function refilterSlots(el, f, allSlots, types, users) {
 }
 
 function renderSlotsRows(slots, types, users) {
-  if (!slots.length) return `<tr><td colspan="7"><div class="empty-state" style="padding:24px"><i class="fa-solid fa-calendar"></i><h3>No slots found</h3></div></td></tr>`;
+  if (!slots.length) return `<tr><td colspan="8"><div class="empty-state" style="padding:24px"><i class="fa-solid fa-calendar"></i><h3>No slots found</h3></div></td></tr>`;
   return slots.map(s => {
-    const dt = types.find(t => t.id === s.typeId);
-    const su = s.assignedUserId ? users.find(u => u.id === s.assignedUserId) : null;
+    const dt  = types.find(t => t.id === s.typeId);
+    const su  = s.assignedUserId ? users.find(u => u.id === s.assignedUserId) : null;
+    const bm  = s.branchManagerId ? users.find(u => u.id === s.branchManagerId) : null;
+    const canOverride = canOverrideBranch(s);
+
+    // Edit button — locked if assigned and canOverrideBranch is false
+    let editBtn = '';
+    if (s.status === 'assigned' && !canOverride) {
+      editBtn = `<button class="btn btn-secondary btn-sm" data-edit-slot="${s.id}" title="Branch manager active — cannot override" disabled style="opacity:0.5;cursor:not-allowed"><i class="fa-solid fa-lock"></i></button>`;
+    } else {
+      editBtn = `<button class="btn btn-secondary btn-sm" data-edit-slot="${s.id}"><i class="fa-solid fa-pencil"></i></button>`;
+    }
+
+    // Delegate button
+    let delegateBtn = '';
+    if (s.status === 'vacant') {
+      delegateBtn = `<button class="btn btn-secondary btn-sm" data-delegate-slot="${s.id}" title="Delegate to branch manager"><i class="fa-solid fa-share-nodes"></i> Delegate</button>`;
+    } else if (s.status === 'pending_branch') {
+      delegateBtn = `<button class="btn btn-ghost btn-sm" data-delegate-slot="${s.id}" title="Reassign branch manager"><i class="fa-solid fa-share-nodes"></i> Reassign Branch</button>`;
+    }
+
     return `<tr>
       <td>${formatDate(s.date)}</td>
       <td style="white-space:nowrap">${s.startTime} – ${s.endTime}</td>
       <td>${dt ? `<span style="display:flex;align-items:center;gap:6px"><span class="type-dot" style="background:${dt.color}"></span>${dt.name}</span>` : '—'}</td>
       <td>${su ? `<span style="display:flex;align-items:center;gap:6px">${avatarHtml(su,'avatar-xs')}${su.name}</span>` : '<span class="text-dim">Vacant</span>'}</td>
+      <td>${bm ? `<span style="font-size:.82rem">${bm.name}</span>` : '<span class="text-dim">—</span>'}</td>
       <td>${statusBadge(s.status)}</td>
       <td style="color:var(--text-dim);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.notes||'—'}</td>
       <td class="col-actions">
-        <button class="btn btn-secondary btn-sm" data-edit-slot="${s.id}"><i class="fa-solid fa-pencil"></i></button>
+        ${editBtn}
+        ${delegateBtn}
         ${s.status==='assigned'&&s.date<=todayStr() ? `<button class="btn btn-primary btn-sm" data-complete-slot="${s.id}" title="Mark Completed"><i class="fa-solid fa-check"></i></button>` : ''}
         <button class="btn btn-danger btn-sm" data-del-slot="${s.id}"><i class="fa-solid fa-trash"></i></button>
       </td>
@@ -244,16 +268,23 @@ function renderSlotsRows(slots, types, users) {
 }
 
 function bindSlotActions(el, tbody, user) {
-  tbody.querySelectorAll('[data-edit-slot]').forEach(b => b.addEventListener('click', () => {
-    const u = user || { role: 'manager' };
-    openSlotModal(b.dataset.editSlot, el, u);
+  tbody.querySelectorAll('[data-edit-slot]').forEach(b => {
+    if (b.disabled) return;
+    b.addEventListener('click', () => {
+      const u = user || { role: 'base_manager' };
+      openSlotModal(b.dataset.editSlot, el, u);
+    });
+  });
+  tbody.querySelectorAll('[data-delegate-slot]').forEach(b => b.addEventListener('click', () => {
+    const u = user || { role: 'base_manager' };
+    openDelegateModal(b.dataset.delegateSlot, el, u);
   }));
   tbody.querySelectorAll('[data-complete-slot]').forEach(b => b.addEventListener('click', () => completeSlotById(b.dataset.completeSlot, el, user)));
   tbody.querySelectorAll('[data-del-slot]').forEach(b => b.addEventListener('click', () => {
     confirmDialog('Delete this duty slot?', () => {
       DutySlots.set(DutySlots.get().filter(s => s.id !== b.dataset.delSlot));
       showToast('Slot deleted.','success');
-      drawSlots(el, user || {role:'manager'});
+      drawSlots(el, user || {role:'base_manager'});
     }, 'Delete');
   }));
 }
@@ -282,14 +313,14 @@ function completeSlotById(slotId, el, user) {
     }
   }
   showToast('Duty marked completed. Coins awarded!','success');
-  drawSlots(el, user || {role:'manager'});
+  drawSlots(el, user || {role:'base_manager'});
 }
 
 function openSlotModal(id, el, user) {
-  const slots = DutySlots.get();
-  const types = DutyTypes.get().filter(t => t.active);
-  const users = Users.get().filter(u => u.role !== 'manager' && u.status === 'active');
-  const s     = id ? slots.find(x => x.id === id) : null;
+  const slots    = DutySlots.get();
+  const types    = DutyTypes.get().filter(t => t.active);
+  const soldiers = Users.get().filter(u => u.role === 'soldier' && u.status === 'active');
+  const s        = id ? slots.find(x => x.id === id) : null;
 
   openModal(s ? 'Edit Duty Slot' : 'Add Duty Slot', `
     <div class="form-row form-row-2">
@@ -313,10 +344,10 @@ function openSlotModal(id, el, user) {
       </div>
     </div>
     <div class="form-group">
-      <label class="form-label">Assign User (optional)</label>
+      <label class="form-label">Assign Soldier (optional)</label>
       <select class="form-select" id="sl-user">
         <option value="">— Leave Vacant —</option>
-        ${users.map(u => `<option value="${u.id}" ${s?.assignedUserId===u.id?'selected':''}>${u.name} (${u.rank})</option>`).join('')}
+        ${soldiers.map(u => `<option value="${u.id}" ${s?.assignedUserId===u.id?'selected':''}>${u.name} (${u.rank})</option>`).join('')}
       </select>
     </div>
     <div class="form-group">
@@ -427,6 +458,63 @@ function openBulkModal(el, user) {
     ]);
 }
 
+// ── Delegate Modal ───────────────────────────────────────────
+function openDelegateModal(slotId, el, user) {
+  const slot = DutySlots.get().find(s => s.id === slotId);
+  if (!slot) return;
+  const dt = DutyTypes.get().find(t => t.id === slot.typeId);
+  const branchManagers = Users.get().filter(u => u.role === 'branch_manager' && u.status === 'active');
+  const branches = Branches.get();
+
+  openModal('Delegate Slot to Branch Manager', `
+    <div style="margin-bottom:16px">
+      <div class="form-label">Slot</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:4px">
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${dt?.color||'#ccc'}"></span>
+        <strong>${dt?.name||'?'}</strong> · ${formatDate(slot.date)} ${slot.startTime}–${slot.endTime}
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label required">Branch Manager</label>
+      <select class="form-select" id="dlg-bm-sel">
+        <option value="">— Select branch manager —</option>
+        ${branchManagers.map(bm => {
+          const branch = branches.find(b => b.id === bm.branchId);
+          return `<option value="${bm.id}" ${slot.branchManagerId===bm.id?'selected':''}>${bm.name} (${branch?.name||'No branch'})</option>`;
+        }).join('')}
+      </select>
+    </div>
+    <div id="dlg-err" class="form-error"></div>`,
+    [
+      { label: 'Cancel',    cls: 'btn-ghost',   action: 'cancel', onClick: closeModal },
+      { label: slot.branchManagerId ? 'Reassign' : 'Delegate', cls: 'btn-primary', action: 'delegate', onClick: () => saveDelegate(slotId, el, user) },
+    ]);
+}
+
+function saveDelegate(slotId, el, user) {
+  const bmId = document.getElementById('dlg-bm-sel').value;
+  const err  = document.getElementById('dlg-err');
+  if (!bmId) { err.textContent = 'Please select a branch manager.'; return; }
+
+  const slots = DutySlots.get();
+  const idx   = slots.findIndex(s => s.id === slotId);
+  if (idx === -1) { closeModal(); return; }
+
+  slots[idx].branchManagerId = bmId;
+  slots[idx].delegatedAt     = new Date().toISOString();
+  slots[idx].status          = 'pending_branch';
+  slots[idx].assignedUserId  = null;
+  slots[idx].lastBranchActionAt = null;
+  DutySlots.set(slots);
+
+  const bm = getUser(bmId);
+  logAudit(user, 'delegate_slot', 'duty_slot', slotId, `Delegated to ${bm?.name}`);
+  addActivity(`${user.name} delegated slot to ${bm?.name}`, 'fa-share-nodes', 'info');
+  closeModal();
+  showToast(`Slot delegated to ${bm?.name}!`, 'success');
+  drawSlots(el, user);
+}
+
 // ── Tab: Auto Match ──────────────────────────────────────────
 function drawMatch(el, user) {
   const types = DutyTypes.get().filter(t => t.active);
@@ -492,7 +580,7 @@ function runMatch(el, user) {
   setTimeout(() => {
     const allSlots  = DutySlots.get();
     const vacant    = allSlots.filter(s => s.status === 'vacant' && s.date >= from && s.date <= to && selTypes.includes(s.typeId));
-    const users     = Users.get();
+    const users     = Users.get().filter(u => u.role === 'soldier' && u.status === 'active');
     const types     = DutyTypes.get();
     const rests     = Restrictions.get();
 
@@ -801,4 +889,28 @@ function saveRestriction(id, el, user) {
   }
   closeModal();
   drawRestrictions(el, user);
+}
+
+// ── Tab: Audit Log ───────────────────────────────────────────
+function drawAuditLog(el, user) {
+  const log = AuditLog.get().slice(0, 100);
+  el.innerHTML = `
+    <div class="section-header">
+      <div class="section-title"><i class="fa-solid fa-clock-rotate-left"></i> Audit Log (${log.length})</div>
+    </div>
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th>Time</th><th>Actor</th><th>Role</th><th>Action</th><th>Details</th></tr></thead>
+        <tbody>
+          ${log.length ? log.map(e => `
+            <tr>
+              <td style="white-space:nowrap;font-size:.8rem">${new Date(e.ts).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</td>
+              <td>${e.actorName}</td>
+              <td><span class="badge ${e.actorRole === 'base_manager' ? 'badge-base-manager' : 'badge-branch-manager'}">${e.actorRole === 'base_manager' ? 'Base' : 'Branch'}</span></td>
+              <td><code style="font-size:.78rem;background:var(--surface2);padding:2px 6px;border-radius:4px">${e.action}</code></td>
+              <td style="color:var(--text-dim);font-size:.82rem">${e.details}</td>
+            </tr>`).join('') : '<tr><td colspan="5"><div class="empty-state" style="padding:24px"><i class="fa-solid fa-clock-rotate-left"></i><h3>No audit entries yet</h3></div></td></tr>'}
+        </tbody>
+      </table>
+    </div>`;
 }

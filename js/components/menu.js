@@ -1,7 +1,6 @@
 // menu.js — Sidebar navigation and hamburger
-import { RANK_CSS, Requests } from '../data.js';
-import { avatarHtml, rankBadge, coinDisplay } from '../utils/helpers.js';
-import { isManager } from '../auth.js';
+import { RANK_CSS, Requests, Users, Branches } from '../data.js';
+import { avatarHtml, rankBadge } from '../utils/helpers.js';
 import { getTheme, setTheme, THEMES } from '../utils/theme.js';
 import { openModal, closeModal } from './modal.js';
 
@@ -9,25 +8,17 @@ export function initMenu(user) {
   renderUserSection(user);
 
   const hamburger = document.getElementById('hamburger');
-  const navClose   = document.getElementById('nav-close');
-  const backdrop   = document.getElementById('nav-backdrop');
-  const nav        = document.getElementById('main-nav');
+  const navClose  = document.getElementById('nav-close');
+  const backdrop  = document.getElementById('nav-backdrop');
 
-  hamburger && hamburger.addEventListener('click', () => openNav());
-  navClose  && navClose.addEventListener('click',  () => closeNav());
-  backdrop  && backdrop.addEventListener('click',  () => closeNav());
+  hamburger && hamburger.addEventListener('click', openNav);
+  navClose  && navClose.addEventListener('click',  closeNav);
+  backdrop  && backdrop.addEventListener('click',  closeNav);
 
-  // Settings button
   document.getElementById('settings-btn')?.addEventListener('click', openSettingsModal);
 
-  // Manager-only nav item
-  const managerLi = document.getElementById('nav-li-duty-manager');
-  if (managerLi) managerLi.style.display = user.role === 'manager' ? '' : 'none';
-
-  // Mobile coin display
+  applyRoleNav(user);
   updateMobileCoins(user);
-
-  // Pending requests badge
   refreshRequestsBadge(user);
 }
 
@@ -38,9 +29,26 @@ export function updateMenu(activePage, user) {
   refreshRequestsBadge(user);
 }
 
+function applyRoleNav(user) {
+  const dutyMgrLi   = document.getElementById('nav-li-duty-manager');
+  const branchCmdLi = document.getElementById('nav-li-branch-command');
+  const usersLi     = document.getElementById('nav-li-users');
+
+  if (dutyMgrLi)   dutyMgrLi.style.display   = user.role === 'base_manager'   ? '' : 'none';
+  if (branchCmdLi) branchCmdLi.style.display  = user.role === 'branch_manager' ? '' : 'none';
+  if (usersLi)     usersLi.style.display      = user.role !== 'soldier'        ? '' : 'none';
+}
+
 function renderUserSection(user) {
   const el = document.getElementById('nav-user-section');
   if (!el) return;
+  const branch = user.branchId ? Branches.get().find(b => b.id === user.branchId) : null;
+  const roleLabel = {
+    base_manager:   'Base Commander',
+    branch_manager: 'Branch Commander',
+    soldier:        'Soldier',
+  }[user.role] || user.role;
+
   el.innerHTML = `
     <div class="nav-user-inner">
       ${avatarHtml(user, 'avatar-sm')}
@@ -49,6 +57,9 @@ function renderUserSection(user) {
         <div class="nav-user-meta">
           ${rankBadge(user)}
           <span class="nav-coins"><i class="fa-solid fa-coins"></i>${user.coins}</span>
+        </div>
+        <div style="font-size:.72rem;color:var(--text-dim);margin-top:2px">
+          ${roleLabel}${branch ? ` · ${branch.name}` : ''}
         </div>
       </div>
     </div>`;
@@ -62,20 +73,24 @@ function updateMobileCoins(user) {
 function refreshRequestsBadge(user) {
   const badge = document.getElementById('requests-badge');
   if (!badge) return;
-  if (user.role === 'manager') {
-    const pending = Requests.get().filter(r => r.status === 'pending').length;
-    if (pending > 0) { badge.textContent = pending; badge.style.display = ''; }
-    else badge.style.display = 'none';
-  } else {
-    badge.style.display = 'none';
+  let pending = 0;
+  const allReqs = Requests.get();
+  if (user.role === 'base_manager') {
+    pending = allReqs.filter(r => r.status === 'pending').length;
+  } else if (user.role === 'branch_manager') {
+    const branchSoldierIds = Users.get()
+      .filter(u => u.branchId === user.branchId && u.role === 'soldier')
+      .map(u => u.id);
+    pending = allReqs.filter(r => r.status === 'pending' && branchSoldierIds.includes(r.userId)).length;
   }
+  if (pending > 0) { badge.textContent = pending; badge.style.display = ''; }
+  else badge.style.display = 'none';
 }
 
-function openNav() {
+function openNav()  {
   document.getElementById('main-nav').classList.add('open');
   document.getElementById('nav-backdrop').classList.add('visible');
 }
-
 function closeNav() {
   document.getElementById('main-nav').classList.remove('open');
   document.getElementById('nav-backdrop').classList.remove('visible');
@@ -83,7 +98,6 @@ function closeNav() {
 
 function openSettingsModal() {
   const current = getTheme();
-
   const body = `
     <div style="display:flex;flex-direction:column;gap:20px">
       <div>
@@ -101,11 +115,11 @@ function openSettingsModal() {
             </div>`).join('')}
         </div>
       </div>
-
       <div style="padding-top:12px;border-top:1px solid var(--border)">
         <div class="form-label" style="margin-bottom:6px">About Sentinel</div>
         <p style="font-size:.82rem;color:var(--text-dim);line-height:1.6">
           Guard duty management system for army bases.<br>
+          Three-tier hierarchy: Base Commander → Branch Commander → Soldier.<br>
           All data stored locally in your browser.
         </p>
       </div>
@@ -115,12 +129,10 @@ function openSettingsModal() {
     { label: 'Close', cls: 'btn-ghost', action: 'close', onClick: closeModal },
   ], { id: 'settings-modal' });
 
-  // Live theme switching
   document.querySelectorAll('[data-theme-pick]').forEach(card => {
     card.addEventListener('click', () => {
       const pick = card.dataset.themePick;
       setTheme(pick);
-      // Update selection UI without closing modal
       document.querySelectorAll('[data-theme-pick]').forEach(c => {
         c.classList.toggle('selected', c.dataset.themePick === pick);
       });
